@@ -26,6 +26,8 @@
 # SECTION 0 : ENVIRONMENT
 ###############################################################################
 
+setwd("C:/Users/LENOVO/OneDrive - Malawi-Liverpool Wellcome Research Programme/Desktop/LAB WORK/Exported FCS Files for Mucosal Analysis/High Dimensionality reductionl-2026/DownSample")
+
 rm(list = ls())
 graphics.off()
 gc()
@@ -60,6 +62,13 @@ set.seed(2026)
 #   c(1,2,3,4,5) = full pipeline from FCS.
 #   c(5)         = figures only (requires Results/cell_data.rds etc.).
 RUN_STAGES <- c(1, 2, 3, 4, 5)
+
+## ---- 1.1b  Live plot display (VS Code Plots pane) --------------------------
+#   TRUE  = each figure is also print()/draw()'n to the active graphics
+#           device (shows up in VS Code as it's produced), on top of the
+#           PDF/PNG/TIFF files always written to Figures/.
+#   FALSE = disk-only (faster; no rendering overhead for dense point layers).
+SHOW_PLOTS <- TRUE
 
 ## ---- 1.2  Working directory (raw exported FCS live here) ------------------
 WORKDIR <- paste0(
@@ -166,10 +175,10 @@ tissue_cols <- c(
 # Diverging ramp for z-scored heatmaps.
 heat_ramp <- circlize::colorRamp2(
          c(-2, 0, 2),
-         c("#2C7BB6", "white", "#D7191C")
+         c("#053061", "white", "#67001f")
 )
 
-feature_option <- "C"   # viridis 'plasma' for continuous marker UMAPs
+feature_option <- "magma"   # viridis 'magma' for journal-ready marker UMAPs
 
 
 ###############################################################################
@@ -198,6 +207,7 @@ assign_tissue <- function(fname){
 ## ---- 2.3  Multi-format ggplot export --------------------------------------
 save_fig <- function(plot, stem, width, height,
                      dpi = params$export_dpi, tiff = FALSE){
+         if(isTRUE(SHOW_PLOTS)) print(plot)
          ggsave(paste0(stem, ".pdf"), plot, width = width, height = height)
          ggsave(paste0(stem, ".png"), plot, width = width, height = height, dpi = dpi)
          if(tiff)
@@ -209,6 +219,7 @@ save_fig <- function(plot, stem, width, height,
 ## ---- 2.4  ComplexHeatmap export (draw() is not a ggplot) ------------------
 save_heatmap <- function(ht, stem, width, height,
                          dpi = params$export_dpi, tiff = FALSE, ...){
+         if(isTRUE(SHOW_PLOTS)) draw(ht, ...)
          pdf(paste0(stem, ".pdf"), width = width, height = height)
          draw(ht, ...); dev.off()
          png(paste0(stem, ".png"), width = width, height = height,
@@ -572,47 +583,6 @@ if(5 %in% RUN_STAGES){
          # FIG 1 : CLUSTERED HEATMAPS
          #####################################################################
          
-         ## ---- 1A  marker x sample (z-scored per marker, tissue anno) -------
-         mat_ms <- cell_data %>%
-                  group_by(Sample) %>%
-                  summarise(across(all_of(markers), median), .groups = "drop") %>%
-                  column_to_rownames("Sample") %>% as.matrix() %>% t()
-         mat_ms_z <- zscore_rows(mat_ms)
-         
-         col_meta <- cell_data %>%
-                  distinct(Sample, tissue) %>%
-                  filter(Sample %in% colnames(mat_ms_z)) %>%
-                  arrange(match(Sample, colnames(mat_ms_z)))
-         
-         col_anno <- HeatmapAnnotation(
-                  Tissue = col_meta$tissue,
-                  col    = list(Tissue = tissue_cols[unique(col_meta$tissue)]),
-                  annotation_name_gp = grid::gpar(fontsize = 8, fontface = "bold"),
-                  simple_anno_size   = grid::unit(3, "mm")
-         )
-         
-         ht_ms <- Heatmap(
-                  mat_ms_z, name = "Row z-score", col = heat_ramp,
-                  top_annotation = col_anno,
-                  cluster_rows = TRUE, cluster_columns = TRUE,
-                  clustering_method_rows = "ward.D2",
-                  clustering_method_columns = "ward.D2",
-                  clustering_distance_rows = "euclidean",
-                  clustering_distance_columns = "euclidean",
-                  row_names_gp = grid::gpar(fontsize = 8),
-                  column_names_gp = grid::gpar(fontsize = 6),
-                  row_dend_width = grid::unit(15, "mm"),
-                  column_dend_height = grid::unit(15, "mm"),
-                  heatmap_legend_param = list(
-                           title_gp  = grid::gpar(fontsize = 8, fontface = "bold"),
-                           labels_gp = grid::gpar(fontsize = 7),
-                           legend_direction = "horizontal"),
-                  border = FALSE
-         )
-         save_heatmap(ht_ms, file.path(paths$fig_heat, "FIG1A_Marker_Sample_Heatmap"),
-                      width = 9, height = 5, tiff = TRUE,
-                      heatmap_legend_side = "top", annotation_legend_side = "right")
-         
          ## ---- 1B  cluster x marker phenotype key ---------------------------
          mat_cm <- cell_data %>%
                   group_by(Cluster) %>%
@@ -635,7 +605,31 @@ if(5 %in% RUN_STAGES){
          save_heatmap(ht_cm, file.path(paths$fig_heat, "FIG1B_Cluster_Marker_Heatmap"),
                       width = 6, height = 7)
          
-         rm(mat_ms, mat_ms_z, mat_cm, mat_cm_z, col_anno, col_meta, ht_ms, ht_cm)
+         rm(mat_cm, mat_cm_z, ht_cm)
+         gc(); mem_report("FIG 1 complete")
+
+         mat_cm <- cell_data %>%
+                  group_by(Cluster) %>%
+                  summarise(across(all_of(markers), median), .groups = "drop") %>%
+                  column_to_rownames("Cluster") %>% as.matrix()
+         rownames(mat_cm) <- paste0("MC", rownames(mat_cm))
+         mat_cm_z <- scale(mat_cm); mat_cm_z[is.na(mat_cm_z)] <- 0
+         
+         ht_cm <- Heatmap(
+                  mat_cm_z, name = "z-score", col = heat_ramp,
+                  cluster_rows = TRUE, cluster_columns = TRUE,
+                  clustering_method_rows = "ward.D2",
+                  clustering_method_columns = "ward.D2",
+                  row_names_gp = grid::gpar(fontsize = 8),
+                  column_names_gp = grid::gpar(fontsize = 8),
+                  row_dend_width = grid::unit(12, "mm"),
+                  column_dend_height = grid::unit(12, "mm"),
+                  border = FALSE
+         )
+         save_heatmap(ht_cm, file.path(paths$fig_heat, "FIG1B_Cluster_Marker_Heatmap"),
+                      width = 6, height = 7)
+         
+         rm(mat_cm, mat_cm_z, ht_cm)
          gc(); mem_report("FIG 1 complete")
          
          #####################################################################
@@ -649,18 +643,25 @@ if(5 %in% RUN_STAGES){
                   sample.int(nrow(umap_df), params$max_umap_pts) else seq_len(nrow(umap_df))
          umap_plot_df <- umap_df[keep_idx, ]
          
+         cluster_labels <- umap_plot_df %>%
+                  group_by(Cluster) %>%
+                  summarise(UMAP1 = median(UMAP1), UMAP2 = median(UMAP2),
+                            .groups = "drop")
+ 
          ## ---- 2A  master UMAP ----------------------------------------------
          p_master <- ggplot(umap_plot_df, aes(UMAP1, UMAP2, colour = Cluster)) +
-                  rasterise(geom_point(size = 0.15, alpha = 0.6),
+                  rasterise(geom_point(size = 0.15, alpha = 0.7),
                             dpi = params$raster_dpi) +
-                  scale_colour_manual(values = pal_clusters, name = "Metacluster") +
+                  geom_text(data = cluster_labels,
+                            aes(UMAP1, UMAP2, label = Cluster),
+                            colour = "black", fontface = "bold",
+                            size = 3.8, show.legend = FALSE) +
+                  scale_colour_manual(values = pal_clusters, guide = "none") +
                   coord_equal() +
-                  guides(colour = guide_legend(
-                           override.aes = list(size = 3, alpha = 1), ncol = 1)) +
                   labs(title = "Mucosal immune landscape (FlowSOM metaclusters)")
          save_fig(p_master, file.path(paths$fig_umap, "FIG2A_UMAP_master"),
                   width = 7, height = 5.5)
-         
+ 
          ## ---- 2B  faceted by tissue ----------------------------------------
          backdrop <- umap_plot_df %>% dplyr::select(UMAP1, UMAP2)
          p_facets <- ggplot() +
@@ -676,7 +677,7 @@ if(5 %in% RUN_STAGES){
                   theme(strip.text = element_text(face = "bold", size = 10))
          save_fig(p_facets, file.path(paths$fig_umap, "FIG2B_UMAP_by_tissue"),
                   width = 8, height = 7)
-         
+ 
          ## ---- 2C  per-marker feature grid ----------------------------------
          feat_df <- bind_cols(umap_plot_df[, c("UMAP1","UMAP2")],
                               cell_data[keep_idx, markers])
@@ -684,7 +685,10 @@ if(5 %in% RUN_STAGES){
                   ggplot(feat_df, aes(UMAP1, UMAP2, colour = .data[[marker]])) +
                            rasterise(geom_point(size = 0.12, alpha = 0.7),
                                      dpi = params$raster_dpi) +
-                           scale_colour_viridis_c(option = feature_option, name = NULL) +
+                           scale_colour_viridis_c(option = feature_option,
+                                                 direction = -1,
+                                                 na.value = "grey80",
+                                                 name = NULL) +
                            coord_equal() +
                            theme(legend.key.width = grid::unit(2, "mm"),
                                  legend.key.height = grid::unit(6, "mm"),
@@ -750,84 +754,7 @@ if(5 %in% RUN_STAGES){
          save_fig(p_ridge_ti, file.path(paths$fig_ridge, "FIG3B_Ridgeline_by_tissue"),
                   width = 11, height = 7)
          rm(ridge_tissue, p_ridge_ti); gc(); mem_report("FIG 3 complete")
-         
-         #####################################################################
-         # FIG 4 : PCA OF SAMPLES (cluster-frequency space, CLR-stabilised)
-         #####################################################################
-         
-         freq_wide <- cluster_abundance %>%
-                  dplyr::select(Sample, Cluster, Frequency) %>%
-                  mutate(Cluster = paste0("MC", Cluster)) %>%
-                  pivot_wider(names_from = Cluster, values_from = Frequency,
-                              values_fill = 0)
-         
-         sample_meta <- cell_data %>%
-                  distinct(Sample, tissue, patient) %>%
-                  filter(Sample %in% freq_wide$Sample)
-         
-         freq_mat <- freq_wide %>% column_to_rownames("Sample") %>% as.matrix()
-         
-         freq_clr <- log(freq_mat + params$pseudocount)
-         freq_clr <- sweep(freq_clr, 1, rowMeans(freq_clr), "-")
-         
-         nzv     <- matrixStats::colVars(freq_clr) > 0
-         pca     <- prcomp(freq_clr[, nzv, drop = FALSE], center = TRUE, scale. = TRUE)
-         var_exp <- 100 * (pca$sdev^2) / sum(pca$sdev^2)
-         
-         pca_df <- as_tibble(pca$x[, 1:2], rownames = "Sample") %>%
-                  left_join(sample_meta, by = "Sample")
-         
-         ## ---- 4A  score plot -----------------------------------------------
-         p_pca <- ggplot(pca_df, aes(PC1, PC2, colour = tissue)) +
-                  stat_ellipse(aes(group = tissue), type = "norm",
-                               linewidth = 0.4, alpha = 0.5) +
-                  geom_point(size = 3, alpha = 0.9) +
-                  geom_text_repel(aes(label = patient), size = 2.5,
-                                  max.overlaps = 20, show.legend = FALSE) +
-                  scale_colour_manual(values = tissue_cols, name = "Tissue") +
-                  coord_equal() +
-                  labs(title = "PCA of mucosal samples (cluster-frequency space)",
-                       x = sprintf("PC1 (%.1f%%)", var_exp[1]),
-                       y = sprintf("PC2 (%.1f%%)", var_exp[2]))
-         save_fig(p_pca, file.path(paths$fig_pca, "FIG4A_PCA_scores"),
-                  width = 7, height = 6)
-         
-         ## ---- 4B  scree ----------------------------------------------------
-         scree_df <- tibble(
-                  PC = factor(paste0("PC", seq_along(var_exp)),
-                              levels = paste0("PC", seq_along(var_exp))),
-                  Variance = var_exp) %>% slice_head(n = min(10, length(var_exp)))
-         p_scree <- ggplot(scree_df, aes(PC, Variance)) +
-                  geom_col(fill = "#4477AA") +
-                  geom_text(aes(label = sprintf("%.1f%%", Variance)),
-                            vjust = -0.4, size = 2.6) +
-                  labs(x = NULL, y = "Variance explained (%)", title = "Scree plot")
-         save_fig(p_scree, file.path(paths$fig_pca, "FIG4B_PCA_scree"),
-                  width = 5, height = 4)
-         
-         ## ---- 4C  loadings -------------------------------------------------
-         load_df <- as_tibble(pca$rotation[, 1:2], rownames = "Cluster") %>%
-                  mutate(magnitude = sqrt(PC1^2 + PC2^2)) %>%
-                  arrange(desc(magnitude))
-         p_load <- ggplot(load_df, aes(PC1, PC2)) +
-                  geom_segment(aes(x = 0, y = 0, xend = PC1, yend = PC2),
-                               arrow = arrow(length = grid::unit(2, "mm")),
-                               colour = "grey50", linewidth = 0.3) +
-                  geom_text_repel(aes(label = Cluster), size = 2.6, max.overlaps = 30) +
-                  labs(title = "PCA loadings (cluster contributions)",
-                       x = sprintf("PC1 (%.1f%%)", var_exp[1]),
-                       y = sprintf("PC2 (%.1f%%)", var_exp[2]))
-         save_fig(p_load, file.path(paths$fig_pca, "FIG4C_PCA_loadings"),
-                  width = 6, height = 5)
-         
-         saveRDS(pca, file.path(paths$results, "PCA_object.rds"))
-         write.csv(pca_df,  file.path(paths$results, "PCA_scores.csv"),   row.names = FALSE)
-         write.csv(load_df, file.path(paths$results, "PCA_loadings.csv"), row.names = FALSE)
-         
-         rm(freq_wide, freq_mat, freq_clr, sample_meta, nzv, pca, var_exp,
-            pca_df, scree_df, load_df, p_pca, p_scree, p_load)
-         gc(); mem_report("FIG 4 complete")
-}
+
 
 
 ###############################################################################
@@ -849,169 +776,7 @@ if(5 %in% RUN_STAGES){
 #   2019, CyTOF workflow).                                                     #
 #                                                                             #
 #   Requires (from earlier stages): Results/cell_data.rds                     #
-#   Requires objects/params from Sections 1-2 of the master pipeline:         #
-#     markers, tissue_cols, theme_pub, save_fig(), mem_report(), paths        #
-###############################################################################
-
-if(!exists("save_fig"))
-         stop("Run Sections 0-2 of the master pipeline first (helpers/config).")
-
-mem_report("START Stage 05b (feature-driven PCA)")
-
-suppressPackageStartupMessages({
-         library(tidyverse)
-         library(ggrepel)
-         library(matrixStats)
-         library(patchwork)
-})
-
-## ---- Load input -----------------------------------------------------------
-if(!exists("cell_data"))
-         cell_data <- readRDS(file.path(paths$results, "cell_data.rds"))
-cell_data$Cluster <- factor(cell_data$Cluster)
-
-## ---- Residency / memory marker subset (edit as needed) --------------------
-residency_markers <- c("CD69", "CD103", "CD45RO", "CCR7")
-stopifnot(all(residency_markers %in% markers))
-
-## ---------------------------------------------------------------------------
-## CORE FUNCTION: feature-driven PCA + biplot from a marker set
-## ---------------------------------------------------------------------------
-#   feature_set : character vector of marker columns to use
-#   tag         : short label for filenames/titles
-#   Returns invisibly a list(pca, scores, loadings, var_exp).
-run_feature_pca <- function(feature_set, tag){
-         
-         ## 1. Sample x marker median matrix (arcsinh medians) ---------------
-         mat <- cell_data %>%
-                  group_by(Sample) %>%
-                  summarise(across(all_of(feature_set), median), .groups = "drop") %>%
-                  column_to_rownames("Sample") %>%
-                  as.matrix()
-         
-         ## Drop zero-variance markers (guards prcomp scale.) ----------------
-         keep_feat <- matrixStats::colVars(mat) > 0
-         if(any(!keep_feat))
-                  message("Dropping zero-variance marker(s): ",
-                          paste(colnames(mat)[!keep_feat], collapse = ", "))
-         mat <- mat[, keep_feat, drop = FALSE]
-         
-         ## 2. PCA: centre + per-marker scale -------------------------------
-         pca     <- prcomp(mat, center = TRUE, scale. = TRUE)
-         var_exp <- 100 * (pca$sdev^2) / sum(pca$sdev^2)
-         
-         ## 3. Sample metadata for colouring --------------------------------
-         smeta <- cell_data %>%
-                  distinct(Sample, tissue, patient) %>%
-                  filter(Sample %in% rownames(pca$x))
-         
-         scores <- as_tibble(pca$x[, 1:2], rownames = "Sample") %>%
-                  left_join(smeta, by = "Sample")
-         
-         ## 4. Loadings, scaled to overlay on the score plot (biplot) -------
-         #    Arrow length scaled to the score cloud for legibility.
-         arrow_scale <- 0.9 * max(abs(scores$PC1), abs(scores$PC2)) /
-                  max(abs(pca$rotation[, 1:2]))
-         loadings <- as_tibble(pca$rotation[, 1:2], rownames = "Marker") %>%
-                  mutate(PC1s = PC1 * arrow_scale,
-                         PC2s = PC2 * arrow_scale,
-                         magnitude = sqrt(PC1^2 + PC2^2)) %>%
-                  arrange(desc(magnitude))
-         
-         ## 5A. Score plot ---------------------------------------------------
-         p_scores <- ggplot(scores, aes(PC1, PC2, colour = tissue)) +
-                  stat_ellipse(aes(group = tissue), type = "norm",
-                               linewidth = 0.4, alpha = 0.5) +
-                  geom_point(size = 3, alpha = 0.9) +
-                  geom_text_repel(aes(label = patient), size = 2.5,
-                                  max.overlaps = 20, show.legend = FALSE) +
-                  scale_colour_manual(values = tissue_cols, name = "Tissue") +
-                  coord_equal() +
-                  labs(title = sprintf("PCA scores — %s marker panel", tag),
-                       x = sprintf("PC1 (%.1f%%)", var_exp[1]),
-                       y = sprintf("PC2 (%.1f%%)", var_exp[2]))
-         
-         ## 5B. Biplot (scores + loading vectors) — the mechanistic figure --
-         p_biplot <- ggplot() +
-                  stat_ellipse(data = scores,
-                               aes(PC1, PC2, group = tissue, colour = tissue),
-                               type = "norm", linewidth = 0.4, alpha = 0.4,
-                               show.legend = FALSE) +
-                  geom_point(data = scores,
-                             aes(PC1, PC2, colour = tissue),
-                             size = 3, alpha = 0.9) +
-                  geom_segment(data = loadings,
-                               aes(x = 0, y = 0, xend = PC1s, yend = PC2s),
-                               arrow = arrow(length = grid::unit(2.2, "mm")),
-                               colour = "grey25", linewidth = 0.4) +
-                  geom_text_repel(data = loadings,
-                                  aes(PC1s, PC2s, label = Marker),
-                                  size = 3, fontface = "bold",
-                                  colour = "grey15", max.overlaps = 30) +
-                  scale_colour_manual(values = tissue_cols, name = "Tissue") +
-                  coord_equal() +
-                  labs(title = sprintf("PCA biplot — %s marker panel", tag),
-                       subtitle = "Arrows = marker loadings (phenotypic drivers)",
-                       x = sprintf("PC1 (%.1f%%)", var_exp[1]),
-                       y = sprintf("PC2 (%.1f%%)", var_exp[2]))
-         
-         ## 5C. Loading contribution bars (PC1 & PC2) -----------------------
-         contrib <- as_tibble(pca$rotation[, 1:2], rownames = "Marker") %>%
-                  pivot_longer(c(PC1, PC2), names_to = "PC", values_to = "Loading") %>%
-                  mutate(Marker = fct_reorder(Marker, abs(Loading)))
-         
-         p_contrib <- ggplot(contrib, aes(Loading, Marker, fill = Loading > 0)) +
-                  geom_col() +
-                  geom_vline(xintercept = 0, linewidth = 0.3) +
-                  facet_wrap(~ PC, nrow = 1) +
-                  scale_fill_manual(values = c("TRUE" = "#D7191C",
-                                               "FALSE" = "#2C7BB6"),
-                                    guide = "none") +
-                  labs(x = "Loading", y = NULL,
-                       title = sprintf("Marker contributions — %s", tag))
-         
-         ## 6. Export --------------------------------------------------------
-         stem <- file.path(paths$fig_pca, paste0("FIG5_FeaturePCA_", tag))
-         save_fig(p_scores,  paste0(stem, "_scores"),  width = 7, height = 6)
-         save_fig(p_biplot,  paste0(stem, "_biplot"),  width = 7.5, height = 6.5)
-         save_fig(p_contrib, paste0(stem, "_contrib"), width = 8, height = 4)
-         
-         ## Combined main-figure composite ----------------------------------
-         p_combo <- (p_biplot | p_contrib) +
-                  plot_annotation(tag_levels = "A")
-         save_fig(p_combo, paste0(stem, "_composite"), width = 13, height = 6)
-         
-         ## 7. Persist tables ------------------------------------------------
-         write.csv(scores,
-                   file.path(paths$results, paste0("FeaturePCA_", tag, "_scores.csv")),
-                   row.names = FALSE)
-         write.csv(loadings %>% dplyr::select(Marker, PC1, PC2, magnitude),
-                   file.path(paths$results, paste0("FeaturePCA_", tag, "_loadings.csv")),
-                   row.names = FALSE)
-         
-         invisible(list(pca = pca, scores = scores,
-                        loadings = loadings, var_exp = var_exp))
-}
-
-## ---------------------------------------------------------------------------
-## RUN: (A) full panel, (C) residency subset
-## ---------------------------------------------------------------------------
-res_full      <- run_feature_pca(markers,           tag = "Full12")
-gc()
-res_residency <- run_feature_pca(residency_markers, tag = "Residency")
-gc()
-
-## ---- Console readout: top drivers per component ---------------------------
-cat("\nTop PC1 drivers (full panel):\n")
-print(res_full$loadings %>% arrange(desc(abs(PC1))) %>%
-               dplyr::select(Marker, PC1) %>% head(5))
-cat("\nTop PC1 drivers (residency panel):\n")
-print(res_residency$loadings %>% arrange(desc(abs(PC1))) %>%
-               dplyr::select(Marker, PC1) %>% head(4))
-
-rm(res_full, res_residency); gc()
-mem_report("END Stage 05b (feature-driven PCA)")
-
+# Stage 05b feature-driven PCA has been removed per request.
 
 
 ###############################################################################
