@@ -1,0 +1,40 @@
+filename,sample_ID,Compartment,Donor,Quality
+export_export_D06 DKP105 Cervical CytobrushStained WLSM.fcs,DKP105_EC_D06,Ectocervix,DKP105,Good
+export_C03 DKP108 Cervical Cytobrush Stained WLSM.fcs,DKP108_EC_C03,Ectocervix,DKP108,Poor
+export_C02 DKP107 Cervical Cytobrush Stained WLSM.fcs,DKP107_EC_C02,Ectocervix,DKP107,Good
+export_C02 DKP11E Cervical Cytobrush WLSM.fcs,DKP11E_EC_C02,Ectocervix,DKP11E,Good
+export_C01 DKP106 Cervical Cytobrush Stained WLSM.fcs,DKP106_EC_C01,Ectocervix,DKP106,Good
+export_C01 DKP11D Cervical Cytobrush WLSM.fcs,DKP11D_EC_C01,Ectocervix,DKP11D,Good
+export_B06 DKP11C Cervical Cytobrush WLSM.fcs,DKP11C_EC_B06,Ectocervix,DKP11C,Good
+export_B05 DKP11B Cervical Cytobrush WLSM.fcs,DKP11B_EC_B05,Ectocervix,DKP11B,Good
+export_A05 DKP117 Cervical Cytobrush Stained WLSM.fcs,DKP117_EC_A05,Ectocervix,DKP117,Good
+export_A05 DKP115 Cervical Cytobrush Stained WLSM.fcs,DKP115_EC_A05,Ectocervix,DKP115,Poor
+export_D05 DKP105 Cervical Scrape Stained WLSM.fcs,DKP105_EN_D05,Endocervix,DKP105,Good
+export_D01 DKP11E Cervical Scrape WLSM.fcs,DKP11E_EN_D01,Endocervix,DKP11E,Good
+export_C06 DKP11D Cervical Scrape WLSM.fcs,DKP11D_EN_C06,Endocervix,DKP11D,Good
+export_C05 DKP11C Cervical Scrape WLSM.fcs,DKP11C_EN_C05,Endocervix,DKP11C,Good
+export_C04 DKP11B Cervical Scrape WLSM.fcs,DKP11B_EN_C04,Endocervix,DKP11B,Good
+export_C03 DKP11A Cervical Scrape WLSM.fcs,DKP11A_EN_C03,Endocervix,DKP11A,Good
+export_B06 DKP108 Cervical Scrape Stained WLSM.fcs,DKP108_EN_B06,Endocervix,DKP108,Good
+export_B05 DKP107 Cervical Scrape Stained WLSM.fcs,DKP107_EN_B05,Endocervix,DKP107,Good
+export_B04 DKP106 Cervical Scrape Stained WLSM.fcs,DKP106_EN_B04,Endocervix,DKP106,Good
+export_A04 DKP117 Cervical Scrape Stained WLSM.fcs,DKP117_EN_A04,Endocervix,DKP117,Good
+export_A04 DKP115 Cervical Scrape Stained WLSM.fcs,DKP115_EN_A04,Endocervix,DKP115,Good
+export_D03 DKP105 Nasal Scrape Stained WLSM.fcs,DKP105_IT_D03,Inferior_Turbinate,DKP105,Good
+export_B04 DKP11E Nasal Scrape WLSM.fcs,DKP11E_IT_B04,Inferior_Turbinate,DKP11E,Good
+export_B03 DKP108 Nasal Scrape Stained WLSM.fcs,DKP108_IT_B03,Inferior_Turbinate,DKP108,Good
+export_B02 DKP107 Nasal Scrape Stained WLSM.fcs,DKP107_IT_B02,Inferior_Turbinate,DKP107,Good
+export_B01 DKP106 Nasal Scrape Stained WLSM.fcs,DKP106_IT_B01,Inferior_Turbinate,DKP106,Good
+export_A03 DKP117 Nasal Scrape Stained WLSM.fcs,DKP117_IT_A03,Inferior_Turbinate,DKP117,Good
+export_A03 DKP115 Nasal Scrape Stained WLSM.fcs,DKP115_IT_A03,Inferior_Turbinate,DKP115,Good
+export_D01 DKP105 Nasal Swab Stained WLSM.fcs,DKP105_NM_D01,Nasal_Mucosa,DKP105,Good
+export_B03 DKP11E Nasal Swab WLSM.fcs,DKP11E_NM_B03,Nasal_Mucosa,DKP11E,Good
+export_B02 DKP11D Nasal Swab WLSM.fcs,DKP11D_NM_B02,Nasal_Mucosa,DKP11D,Good
+export_B01 DKP11C Nasal Swab WLSM.fcs,DKP11C_NM_B01,Nasal_Mucosa,DKP11C,Good
+export_A06 DKP108 Nasal Swab Stained WLSM.fcs,DKP108_NM_A06,Nasal_Mucosa,DKP108,Good
+export_A06 DKP11A Nasal Swab WLSM.fcs,DKP11A_NM_A06,Nasal_Mucosa,DKP11A,Good
+export_A05 DKP107 Nasal Swab Stained WLSM.fcs,DKP107_NM_A05,Nasal_Mucosa,DKP107,Good
+export_A04 DKP106 Nasal Swab Stained WLSM.fcs,DKP106_NM_A04,Nasal_Mucosa,DKP106,Good
+export_A02 DKP117 Nasal Swab Stained WLSM.fcs,DKP117_NM_A02,Nasal_Mucosa,DKP117,Good
+export_A02 DKP116 Nasal Swab Stained WLSM.fcs,DKP116_NM_A02,Nasal_Mucosa,DKP116,Good
+export_A02 DKP115 Nasal Swab Stained WLSM.fcs,DKP115_NM_A02,Nasal_Mucosa,DKP115,Good
