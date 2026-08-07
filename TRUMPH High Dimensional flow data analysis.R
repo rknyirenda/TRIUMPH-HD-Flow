@@ -43,7 +43,6 @@ suppressPackageStartupMessages({
          library(ComplexHeatmap)
          library(circlize)
          library(ggridges)
-         library(patchwork)
          library(ggrastr)
          library(ggrepel)
          library(RColorBrewer)
@@ -157,28 +156,23 @@ theme_pub <- theme_classic(base_size = 9) +
 theme_set(theme_pub)
 
 ## ---- 1.7  Palettes & colour ramp ------------------------------------------
-cluster_cols <- c(
-         "#0072B2","#E69F00","#009E73","#CC79A7","#56B4E9",
-         "#D55E00","#F0E442","#000000","#882255","#44AA99",
-         "#117733","#999933","#88CCEE","#AA4499","#DDCC77",
-         "#332288","#661100","#6699CC","#AA4466","#228833"
-)
+cluster_cols <- colorRampPalette(c("#00BFC4", "#FF3E3E"))(20)
 
 tissue_cols <- c(
-         "Nasal Swab"         = "#1B9E77",
-         "Nasal Scrape"       = "#7570B3",
-         "Cervical Scrape"    = "#D95F02",
-         "Cervical Cytobrush" = "#E7298A",
-         "Unknown"            = "grey60"
+         "Nasopharynx"         = "#1B9E77",
+         "Inferior turbinate"  = "#7570B3",
+         "Ectocervix"          = "#D95F02",
+         "Endocervix"          = "#E7298A",
+         "Unknown"             = "grey60"
 )
 
-# Diverging ramp for z-scored heatmaps.
+# Inferno ramp for z-scored heatmaps (matches the FIG 2C feature-plot palette).
 heat_ramp <- circlize::colorRamp2(
-         c(-2, 0, 2),
-         c("#053061", "white", "#67001f")
+         seq(-2, 2, length.out = 100),
+         viridisLite::inferno(100)
 )
 
-feature_option <- "magma"   # viridis 'magma' for journal-ready marker UMAPs
+feature_colors <- c("#2166AC", "#B2182B")   # blue-red marker expression ramp
 
 
 ###############################################################################
@@ -196,10 +190,10 @@ mem_report <- function(step){
 ## ---- 2.2  Tissue assignment from filename ---------------------------------
 assign_tissue <- function(fname){
          dplyr::case_when(
-                  stringr::str_detect(fname, "Nasal Swab")         ~ "Nasal Swab",
-                  stringr::str_detect(fname, "Nasal Scrape")       ~ "Nasal Scrape",
-                  stringr::str_detect(fname, "Cervical Scrape")    ~ "Cervical Scrape",
-                  stringr::str_detect(fname, "Cervical Cytobrush") ~ "Cervical Cytobrush",
+                  stringr::str_detect(fname, "Nasal Swab")         ~ "Nasopharynx",
+                  stringr::str_detect(fname, "Nasal Scrape")       ~ "Inferior turbinate",
+                  stringr::str_detect(fname, "Cervical Scrape")    ~ "Ectocervix",
+                  stringr::str_detect(fname, "Cervical Cytobrush") ~ "Endocervix",
                   TRUE                                             ~ "Unknown"
          )
 }
@@ -233,11 +227,18 @@ save_heatmap <- function(ht, stem, width, height,
          invisible(NULL)
 }
 
-## ---- 2.5  Row z-score (safe against constant rows) ------------------------
-zscore_rows <- function(m){
-         z <- t(scale(t(m)))
-         z[is.na(z)] <- 0
-         z
+## ---- 2.5  Auto phenotype labels from z-scored marker MFI ------------------
+#   Ranks markers within each cluster by z-scored median arcsinh MFI and
+#   concatenates the top hits above z_min into a label, e.g. "CD3+CD4+CD69+".
+#   Clusters with no marker above z_min are labelled "Unassigned".
+label_clusters_by_mfi <- function(mat_z, top_n = 3, z_min = 0.5){
+         labels <- apply(mat_z, 1, function(z_row){
+                  hits <- sort(z_row[z_row > z_min], decreasing = TRUE)
+                  if(length(hits) == 0) return("Unassigned")
+                  paste0(names(hits)[seq_len(min(top_n, length(hits)))],
+                         "+", collapse = "")
+         })
+         make.unique(labels, sep = "_")
 }
 
 mem_report("Configuration & helpers loaded")
@@ -449,14 +450,14 @@ if(3 %in% RUN_STAGES){
          
          ## ---- 3.6  UMAP embedding ------------------------------------------
          set.seed(2026)
-         umap <- uwot::umap(
+         umap_coords <- uwot::umap(
                   expr_all,
                   n_neighbors = params$umap_neighbors,
                   min_dist    = params$umap_min_dist,
                   metric      = "euclidean",
                   verbose     = TRUE
          )
-         saveRDS(umap, file.path(paths$results, "UMAP.rds"))
+         saveRDS(umap_coords, file.path(paths$results, "UMAP.rds"))
          
          ## ---- 3.7  Persist transformed matrix pieces for Stage 04 ----------
          saveRDS(expr_all,  file.path(paths$results, "expr_all_asinh.rds"))
@@ -513,7 +514,30 @@ if(4 %in% RUN_STAGES){
          write.csv(cluster_summary,
                    file.path(paths$results, "Cluster_Summary.csv"),
                    row.names = FALSE)
-         
+
+         ## ---- 4.2b  Auto phenotype labels (z-scored median MFI per marker) -
+         mat_median <- cluster_summary %>%
+                  dplyr::select(Cluster, ends_with("_Median")) %>%
+                  column_to_rownames("Cluster") %>%
+                  rename_with(~ str_remove(.x, "_Median$")) %>%
+                  as.matrix()
+         mat_median_z <- scale(mat_median)
+         mat_median_z[is.na(mat_median_z)] <- 0
+
+         cluster_labels_df <- tibble(
+                  Cluster   = factor(rownames(mat_median_z),
+                                     levels = levels(cell_data$Cluster)),
+                  Phenotype = label_clusters_by_mfi(mat_median_z)
+         )
+         write.csv(cluster_labels_df,
+                   file.path(paths$results, "Cluster_Phenotype_Labels.csv"),
+                   row.names = FALSE)
+
+         cell_data <- cell_data %>% left_join(cluster_labels_df, by = "Cluster")
+         saveRDS(cell_data, file.path(paths$results, "cell_data.rds"))
+
+         rm(mat_median, mat_median_z); gc()
+
          ## ---- 4.3  Cluster sizes -------------------------------------------
          cluster_size <- cell_data %>%
                   count(Cluster, name = "Cells") %>%
@@ -544,10 +568,9 @@ if(4 %in% RUN_STAGES){
 ###############################################################################
 ##                                                                           ##
 ##   STAGE 05 : PUBLICATION FIGURES                                           ##
-##     FIG 1  Clustered heatmaps (marker x sample; cluster x marker)          ##
+##     FIG 1  Clustered heatmap (cluster x marker)                            ##
 ##     FIG 2  UMAP panels (master; tissue facets; marker feature grid)        ##
 ##     FIG 3  Ridgeline densities (by cluster; by tissue)                     ##
-##     FIG 4  PCA of samples in cluster-frequency space                       ##
 ##                                                                           ##
 ###############################################################################
 ###############################################################################
@@ -559,8 +582,8 @@ if(5 %in% RUN_STAGES){
          ## ---- Load figure inputs -------------------------------------------
          if(!exists("cell_data"))
                   cell_data <- readRDS(file.path(paths$results, "cell_data.rds"))
-         if(!exists("umap"))
-                  umap <- readRDS(file.path(paths$results, "UMAP.rds"))
+         if(!exists("umap_coords"))
+                  umap_coords <- readRDS(file.path(paths$results, "UMAP.rds"))
          if(!exists("cluster_abundance"))
                   cluster_abundance <- readRDS(file.path(paths$results,
                                                          "cluster_frequency.rds"))
@@ -573,10 +596,28 @@ if(5 %in% RUN_STAGES){
          }
          stopifnot(all(markers %in% colnames(cell_data)))
          cell_data$Cluster <- factor(cell_data$Cluster)
-         
+
+         # Defensive guard: attach auto phenotype labels if this cell_data.rds
+         # predates the Stage 04 MFI-labelling step.
+         if(!"Phenotype" %in% colnames(cell_data)){
+                  cluster_labels_df <- read.csv(
+                           file.path(paths$results, "Cluster_Phenotype_Labels.csv"),
+                           stringsAsFactors = FALSE) %>%
+                           mutate(Cluster = factor(Cluster, levels = levels(cell_data$Cluster)))
+                  cell_data <- cell_data %>% left_join(cluster_labels_df, by = "Cluster")
+         }
+
          clus_levels  <- levels(cell_data$Cluster)
          pal_clusters <- setNames(cluster_cols[seq_along(clus_levels)], clus_levels)
-         
+
+         # "MC3: CD3+CD4+CD69+" style combined label, keyed by cluster id, for
+         # UMAP text/legend and heatmap row names.
+         pheno_by_cluster <- cell_data %>%
+                  distinct(Cluster, Phenotype) %>%
+                  arrange(Cluster) %>%
+                  mutate(Label = paste0("MC", Cluster, ": ", Phenotype))
+         combo_labels <- setNames(pheno_by_cluster$Label, pheno_by_cluster$Cluster)
+
          mem_report("Figure inputs ready")
          
          #####################################################################
@@ -588,7 +629,7 @@ if(5 %in% RUN_STAGES){
                   group_by(Cluster) %>%
                   summarise(across(all_of(markers), median), .groups = "drop") %>%
                   column_to_rownames("Cluster") %>% as.matrix()
-         rownames(mat_cm) <- paste0("MC", rownames(mat_cm))
+         rownames(mat_cm) <- combo_labels[rownames(mat_cm)]
          mat_cm_z <- scale(mat_cm); mat_cm_z[is.na(mat_cm_z)] <- 0
          
          ht_cm <- Heatmap(
@@ -608,35 +649,11 @@ if(5 %in% RUN_STAGES){
          rm(mat_cm, mat_cm_z, ht_cm)
          gc(); mem_report("FIG 1 complete")
 
-         mat_cm <- cell_data %>%
-                  group_by(Cluster) %>%
-                  summarise(across(all_of(markers), median), .groups = "drop") %>%
-                  column_to_rownames("Cluster") %>% as.matrix()
-         rownames(mat_cm) <- paste0("MC", rownames(mat_cm))
-         mat_cm_z <- scale(mat_cm); mat_cm_z[is.na(mat_cm_z)] <- 0
-         
-         ht_cm <- Heatmap(
-                  mat_cm_z, name = "z-score", col = heat_ramp,
-                  cluster_rows = TRUE, cluster_columns = TRUE,
-                  clustering_method_rows = "ward.D2",
-                  clustering_method_columns = "ward.D2",
-                  row_names_gp = grid::gpar(fontsize = 8),
-                  column_names_gp = grid::gpar(fontsize = 8),
-                  row_dend_width = grid::unit(12, "mm"),
-                  column_dend_height = grid::unit(12, "mm"),
-                  border = FALSE
-         )
-         save_heatmap(ht_cm, file.path(paths$fig_heat, "FIG1B_Cluster_Marker_Heatmap"),
-                      width = 6, height = 7)
-         
-         rm(mat_cm, mat_cm_z, ht_cm)
-         gc(); mem_report("FIG 1 complete")
-         
          #####################################################################
          # FIG 2 : UMAP PANELS
          #####################################################################
          
-         umap_df <- tibble(UMAP1 = umap[,1], UMAP2 = umap[,2],
+         umap_df <- tibble(UMAP1 = umap_coords[,1], UMAP2 = umap_coords[,2],
                            Cluster = cell_data$Cluster, tissue = cell_data$tissue)
          
          keep_idx <- if(nrow(umap_df) > params$max_umap_pts)
@@ -646,9 +663,15 @@ if(5 %in% RUN_STAGES){
          cluster_labels <- umap_plot_df %>%
                   group_by(Cluster) %>%
                   summarise(UMAP1 = median(UMAP1), UMAP2 = median(UMAP2),
-                            .groups = "drop")
- 
-         ## ---- 2A  master UMAP ----------------------------------------------
+                            .groups = "drop") %>%
+                  mutate(Phenotype = pheno_by_cluster$Phenotype[
+                           match(Cluster, pheno_by_cluster$Cluster)])
+
+         ## ---- 2A  master UMAP -----------------------------------------------
+         #   Cluster number anchors each point cloud; the auto phenotype label
+         #   (top z-scored markers by median arcsinh MFI, Cluster_Phenotype_
+         #   Labels.csv) is repelled alongside it, and the same "MC#: markers"
+         #   string drives the legend so colour keys read as cell types.
          p_master <- ggplot(umap_plot_df, aes(UMAP1, UMAP2, colour = Cluster)) +
                   rasterise(geom_point(size = 0.15, alpha = 0.7),
                             dpi = params$raster_dpi) +
@@ -656,11 +679,25 @@ if(5 %in% RUN_STAGES){
                             aes(UMAP1, UMAP2, label = Cluster),
                             colour = "black", fontface = "bold",
                             size = 3.8, show.legend = FALSE) +
-                  scale_colour_manual(values = pal_clusters, guide = "none") +
+                  ggrepel::geom_text_repel(
+                           data = cluster_labels,
+                           aes(UMAP1, UMAP2, label = Phenotype),
+                           colour = "black", size = 2.6, fontface = "italic",
+                           bg.color = "white", bg.r = 0.12,
+                           max.overlaps = Inf, show.legend = FALSE) +
+                  scale_colour_viridis_d(option = "magma",
+                                        name = "Metacluster",
+                                        labels = combo_labels[clus_levels],
+                                        guide = guide_legend(override.aes = list(size = 4),
+                                                             title.position = "top",
+                                                             ncol = 1)) +
                   coord_equal() +
-                  labs(title = "Mucosal immune landscape (FlowSOM metaclusters)")
+                  labs(title = "Mucosal immune landscape (FlowSOM metaclusters)") +
+                  theme(legend.position = "right",
+                        legend.title = element_text(face = "bold"),
+                        legend.text = element_text(size = 6))
          save_fig(p_master, file.path(paths$fig_umap, "FIG2A_UMAP_master"),
-                  width = 7, height = 5.5)
+                  width = 8.5, height = 5.5)
  
          ## ---- 2B  faceted by tissue ----------------------------------------
          backdrop <- umap_plot_df %>% dplyr::select(UMAP1, UMAP2)
@@ -672,36 +709,52 @@ if(5 %in% RUN_STAGES){
                                        aes(UMAP1, UMAP2, colour = Cluster),
                                        size = 0.14, alpha = 0.7),
                             dpi = params$raster_dpi) +
-                  scale_colour_manual(values = pal_clusters, guide = "none") +
+                  scale_colour_viridis_d(option = "magma", guide = "none") +
                   facet_wrap(~ tissue, ncol = 2) + coord_equal() +
                   theme(strip.text = element_text(face = "bold", size = 10))
          save_fig(p_facets, file.path(paths$fig_umap, "FIG2B_UMAP_by_tissue"),
                   width = 8, height = 7)
  
-         ## ---- 2C  per-marker feature grid ----------------------------------
-         feat_df <- bind_cols(umap_plot_df[, c("UMAP1","UMAP2")],
-                              cell_data[keep_idx, markers])
-         feature_plot <- function(marker){
-                  ggplot(feat_df, aes(UMAP1, UMAP2, colour = .data[[marker]])) +
-                           rasterise(geom_point(size = 0.12, alpha = 0.7),
-                                     dpi = params$raster_dpi) +
-                           scale_colour_viridis_c(option = feature_option,
-                                                 direction = -1,
-                                                 na.value = "grey80",
-                                                 name = NULL) +
-                           coord_equal() +
-                           theme(legend.key.width = grid::unit(2, "mm"),
-                                 legend.key.height = grid::unit(6, "mm"),
-                                 axis.title = element_blank(),
-                                 axis.text = element_blank(),
-                                 axis.ticks = element_blank()) +
-                           ggtitle(marker)
-         }
-         p_features <- wrap_plots(lapply(markers, feature_plot), ncol = 4)
+         ## ---- 2C  per-marker feature grid ------------------------------------
+         #   Inferno scale: black = no/negative expression (arcsinh <= 0),
+         #   through purple/orange to yellow = strongly positive. Expression is
+         #   scaled per marker to that marker's own 1st-99th percentile range
+         #   (so dim and bright markers are both legible side by side, and a
+         #   few extreme events can't wash out the colour scale). Points are
+         #   drawn in ascending expression order so positive cells layer on
+         #   top of the negative background.
+         feat_long <- bind_cols(umap_plot_df[, c("UMAP1", "UMAP2")],
+                                cell_data[keep_idx, markers]) %>%
+                  pivot_longer(all_of(markers), names_to = "Marker",
+                               values_to = "Expression") %>%
+                  mutate(Marker = factor(Marker, levels = markers)) %>%
+                  group_by(Marker) %>%
+                  mutate(
+                           hi     = quantile(Expression, 0.99),
+                           Clip   = pmin(pmax(Expression, 0), hi),
+                           Scaled = if_else(hi > 0, Clip / hi, 0)
+                  ) %>%
+                  ungroup() %>%
+                  arrange(Marker, Scaled)
+
+         p_features <- ggplot(feat_long, aes(UMAP1, UMAP2, colour = Scaled)) +
+                  rasterise(geom_point(size = 0.14), dpi = params$raster_dpi) +
+                  scale_colour_viridis_c(option = "inferno",
+                                        limits  = c(0, 1),
+                                        breaks  = c(0, 1),
+                                        labels  = c("Negative", "Positive"),
+                                        name    = NULL) +
+                  coord_equal() +
+                  facet_wrap(~ Marker, ncol = 4) +
+                  theme(legend.position = "bottom",
+                        axis.title = element_blank(),
+                        axis.text = element_blank(),
+                        axis.ticks = element_blank(),
+                        strip.text = element_text(face = "bold"))
          save_fig(p_features, file.path(paths$fig_umap, "FIG2C_Feature_grid"),
                   width = 10, height = 8)
-         
-         rm(umap_df, umap_plot_df, backdrop, feat_df,
+
+         rm(umap_df, umap_plot_df, backdrop, feat_long,
             p_master, p_facets, p_features, keep_idx)
          gc(); mem_report("FIG 2 complete")
          
@@ -754,29 +807,10 @@ if(5 %in% RUN_STAGES){
          save_fig(p_ridge_ti, file.path(paths$fig_ridge, "FIG3B_Ridgeline_by_tissue"),
                   width = 11, height = 7)
          rm(ridge_tissue, p_ridge_ti); gc(); mem_report("FIG 3 complete")
+}
 
-
-
-###############################################################################
-#                                                                             #
-#   STAGE 05b : FEATURE-DRIVEN PCA  (marker-expression space)                 #
-#                                                                             #
-#   Complements the cluster-frequency PCA (FIG 4). Here samples are           #
-#   summarised by MARKER MEDIANS, so principal components and their           #
-#   loadings map directly onto immunology (residency / memory axes).          #
-#                                                                             #
-#   Feature spaces:                                                           #
-#     A  full 12-marker panel        -> global phenotypic separation          #
-#     C  residency/memory subset     -> targeted TRM-axis test                #
-#          (CD69, CD103, CD45RO, CCR7)                                         #
-#                                                                             #
-#   Method note: per-MARKER standardisation (scale. = TRUE) is essential so   #
-#   high-dynamic-range markers (e.g. CD3) do not dominate variance by scale.  #
-#   This mirrors CATALYST pseudobulk-MDS practice (Nowicka et al., F1000Res   #
-#   2019, CyTOF workflow).                                                     #
-#                                                                             #
-#   Requires (from earlier stages): Results/cell_data.rds                     #
-# Stage 05b feature-driven PCA has been removed per request.
+# NOTE: FIG 1A (marker x sample heatmap), FIG 4 (cluster-frequency PCA), and
+# Stage 05b (feature-driven PCA) have been removed per request.
 
 
 ###############################################################################
